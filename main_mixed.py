@@ -11,15 +11,49 @@ import numpy as np
 from random import uniform
 import pickle
 from time import time
-
+import matplotlib.pyplot as plt
 ## Generate geometry
 # Problem 2
-n_samples = 30
+def create_np_data(gfu: GridFunction, mesh: Mesh, l: int, m: int):
+    """
+    Function to create numpy array from Gridfunction data.
+    Args:
+    gfu: Scalar gridfunction
+    mesh: The mesh used in this simulation.
+    l: Desired number of discrete cells (elements) in the uniform grid (numpy array)
+    in the x direction.
+    n: Desired number of discrete cells (elements) in the uniform grid (numpy array)
+    in the y direction.
+    m: Desired number of discrete cells (elements) in the uniform grid (numpy array)
+    in the z direction.
+    Returns:
+    Numpy array of field data U
+    """
+    # Obtain mesh dimensions from vertices.
+    vertices = np.array([vertex.point for vertex in mesh.vertices])
+    max_vertex = vertices.max(axis=0)
+    min_vertex = vertices.min(axis=0)
+    x0, y0 = min_vertex
+    xn, yn = max_vertex
+    # Initialize numpy arrays for field data.
+    output_U = np.zeros((l,m),dtype=float)
+    # Create uniform grid points based on mesh dimensions.
+    x_interp = np.linspace(x0,xn,l)
+    y_interp = np.linspace(y0,yn,m)                  
+    x_idx = 0
+    for p1 in x_interp:
+        y_idx = 0
+        for p2 in y_interp:
+            val_U = gfu(mesh(p1,p2))
+            output_U[x_idx, y_idx] = val_U
+                
+            y_idx += 1
+        x_idx += 1
+    return output_U
+n_samples = 1
 for i in range(n_samples):
-    print(f"Sample {i}")
-    w = 3.0 + uniform(-0.5, 5)
-    l = 15 + uniform(-5, 5)
-
+    w = 5
+    l = 15 
     rect = SplineGeometry()
     pnts = [(0,0), (l,0), (l,w), (0,w)]
     p1,p2,p3,p4 = [rect.AppendPoint(*pnt) for pnt in pnts]
@@ -33,8 +67,8 @@ for i in range(n_samples):
 
     ## get problem parameters 
 
-    phi0 = 0.3 + uniform(-0.1, 0.1)
-    chi = 0.2 + uniform(-0.1, 0.1)
+    phi0 = 0.2
+    chi = 0.1
     G = 0.15
     GRID_SZ = 32
     h = 1
@@ -46,10 +80,10 @@ for i in range(n_samples):
     ## Generate mesh and geometry ### add parallel stuff
     def mesher(geom, h):
         mesh = Mesh(geom.GenerateMesh(maxh=h))
-        print(mesh.GetBoundaries())
+
         return mesh
     mesh = mesher(rect, h)
-    Draw(mesh)
+   
 
     x = np.linspace(0, l, num= GRID_SZ)
     y = np.linspace(0,w, num = GRID_SZ)
@@ -68,6 +102,7 @@ for i in range(n_samples):
     def Gel_energy_EDP(F): ## |F|^2 + H => gamma F:Gradv + H'*J'
         # ddet(A(t))/dt = det(A(t))*trace(A^-1(t)*Grad (v))
         gamma = G/KBTV
+        print("gamma", gamma)
         J = Det(F)
         phi = phi0/J
         dv = Grad(v)
@@ -79,6 +114,7 @@ for i in range(n_samples):
     def Gel_energy_mixed(u,v,Ptup,Ttup,Paux,Taux,lam,mu): ## |F|^2 + H => gamma F:Gradv + H'*J'
 
         gamma = G/KBTV
+        print("gamma", gamma)
         J = Det(F)
         phi = phi0/J
         invF = Inv(F)
@@ -148,8 +184,16 @@ for i in range(n_samples):
     gfu.vec[:] = 0
     t1 =  time()
     S, history = Solver_freeswell(BF, gfu, damp = 0.5)
-    img_S = np.array([S(p) for p in mesh_interp_points]).reshape((-1, GRID_SZ))
-    torch.save(torch.tensor(img_S).float(), f"DATA/_{i}S.pt")
+    
+    img_S1 = create_np_data(S.components[0][0], mesh, GRID_SZ, GRID_SZ)
+    img_S2 = create_np_data(S.components[0][1], mesh, GRID_SZ, GRID_SZ)
+    img_S = np.zeros_like(img_S1)
+    for i in range(img_S1.shape[0]):
+        for j in range(img_S1.shape[1]):
+            img_S[i,j] = np.sqrt(img_S1[i,j]**2 + img_S2[i,j]**2)
+    plt.imshow(img_S)
+    plt.colorbar()
+    plt.show()
 
 # pickle the results, history and mesh for later use
 #pickle.dump(history, open(f"Sol_Problem{problem[-1]}/history_{form}.p", "wb"))
